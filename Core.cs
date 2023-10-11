@@ -9,7 +9,9 @@ namespace Relish
     public class Core
     {
         private List<string> CharacterNames { get; set; }
+        private List<string> Blacklist { get; set; }
         private Dictionary<string, string> AccessKeys { get; set; }
+        private Dictionary<string, Action<var>> DB { get; set; }
         private DefaultFileProvider? Provider { get; set; }
         private string PaksPath { get; set; }
 
@@ -20,6 +22,20 @@ namespace Relish
                 PaksPath = paksPath;
                 CharacterNames = new List<string>();
                 AccessKeys = new Dictionary<string, string>();
+                Blacklist = new List<string>()
+                {
+                    "Item_LamentConfiguration"
+                };
+                DB = new Dictionary<string, Action<var>>()
+                {
+                    { "CustomizationItemDB", CustomizationItemDB },
+                    { "OutfitDB", OutfitDB },
+                    { "CharacterDescriptionDB", CharacterDescriptionDB },
+                    { "ItemDB", ItemDB },
+                    { "ItemAddonDB", ItemAddonDB },
+                    { "OfferingDB", OfferingDB },
+                    { "PerkDB", PerkDB }
+                };
                 LoadProvider();
             }
         }
@@ -67,10 +83,129 @@ namespace Relish
             return (buffer.key);
         }
 
+        private void CustomizationItemDB(var property)
+        {
+            string cosmeticId = property?["CustomizationId"]?.ToString() ?? string.Empty;
+
+            if (IsInBlacklist(cosmeticId) == false)
+            {
+                Ids.CosmeticIds.Add(cosmeticId);
+            }
+        }
+
+        private void OutfitDB(var property)
+        {
+            string outfitId = property?["ID"]?.ToString() ?? string.Empty;
+
+            if (IsInBlacklist(outfitId) == false)
+            {
+                Ids.OutfitIds.Add(outfitId);
+            }
+        }
+
+        private void CharacterDescriptionDB(var property)
+        {
+            if (property?["CharacterId"]?.ToString() != "None")
+            {
+                CharacterNames.Add($"[{property?["CharacterId"]}] {property?["DisplayName"]?["SourceString"]}");
+
+                Dictionary<string, string> charData = new Dictionary<string, string>
+                {
+                    { "characterName", property?["CharacterId"]?.ToString() ?? string.Empty },
+                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
+                    { "characterDefaultItem", property?["DefaultItem"]?.ToString() ?? string.Empty },
+                    { "name", property?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty }
+                };
+                
+                Ids.DlcIds.Add(charData);
+            }
+        }
+
+        private void ItemDB(var property)
+        {
+            if (property?["Type"]?.ToString() != "EInventoryItemType::Power")
+            {
+                string itemId = property?["ItemId"]?.ToString() ?? string.Empty;
+                
+                Dictionary<string, string> itemData = new Dictionary<string, string>
+                {
+                    { "itemId", itemId },
+                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
+                    { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
+                    { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
+                    { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
+                };
+                
+                if (!IsInBlacklist(itemId)) Ids.ItemIds.Add(itemData);
+            } else 
+            {
+                Console.WriteLine($"[ ITEMDB ]: {0}", property?["Type"]?.ToString());
+            }
+        }
+
+        private void ItemAddonDB(var property)
+        {
+            string itemAddonId = property?["ItemId"]?.ToString() ?? string.Empty;
+
+            Dictionary<string, string> itemAddonData = new Dictionary<string, string>
+            {
+                { "itemId", itemAddonId },
+                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
+                { "characterDefaultItem", property?["ParentItem"]?["ItemIDs"]?.Count() > 0 ? (property?["ParentItem"]?["ItemIDs"]?[0]?.ToString() ?? string.Empty) : string.Empty },
+                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
+                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
+                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
+            };
+            
+            if (IsInBlacklist(itemAddonData) == false)
+            {
+                Ids.AddonIds.Add(itemAddonData);
+            }
+        }
+
+        private void OfferingDB(var property)
+        {
+            string offeringId = property?["ItemId"]?.ToString() ?? string.Empty;
+
+            Dictionary<string, string> offeringData = new Dictionary<string, string>
+            {
+                { "itemId", offeringId },
+                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
+                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
+                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
+                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
+            };
+
+            if (IsInBlacklist(offeringData) == false)
+            {
+                Ids.OfferingIds.Add(offeringData);
+            }
+        }
+
+        private void PerkDB(var property)
+        {
+            string perkId = property?["ItemId"]?.ToString() ?? string.Empty;
+            
+            Dictionary<string, string> perkData = new Dictionary<string, string>
+            {
+                { "itemId", perkId },
+                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
+                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
+                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
+                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
+            };
+            
+            if (IsInBlacklist(perkId) == false)
+            {
+                Ids.PerkIds.Add(perkData);
+            }
+        }
+
         internal static void Get_Files()
         {
             foreach (var keyValuePair in Provider.Files.Where(val => val.Value.Path.Contains("DeadByDaylight/Content/Data")))
             {
+                Console.WriteLine($"{keyValuePair.Value.Name}: {keyValuePair.Value.Path}");
                 switch (keyValuePair.Value.Name)
                 {
                     case "CustomizationItemDB.uasset":
@@ -104,16 +239,6 @@ namespace Relish
             Add_Values(FilePaths.ItemAddonDb, "ItemAddonDB");
             Add_Values(FilePaths.OfferingDb, "OfferingDB");
             Add_Values(FilePaths.PerkDb, "PerkDB");
-
-            const string filePath = "Other/CharacterNames.txt";
-            using var writer = new StreamWriter(filePath);
-            foreach (var name in CharacterNames)
-            {
-                writer.WriteLine(name);
-            }
-
-            writer.Flush();
-            writer.Close();
         }
 
         private static void Add_Values(List<string> list, string type)
@@ -121,97 +246,16 @@ namespace Relish
             foreach (var item in list)
             {
                 var export = JsonConvert.DeserializeObject<dynamic>(
-                    JsonConvert.SerializeObject(Provider?.LoadObjectExports(item))) ?? new ExpandoObject();
+                    JsonConvert.SerializeObject(Provider?.LoadObjectExports(item))
+                ) ?? new ExpandoObject();
 
                 foreach (JProperty p in export[0]?.Rows ?? Enumerable.Empty<JProperty>())
                 {
-                    var properties = p.Values<JObject>();
-                    foreach (var property in properties)
+                    foreach (var property in p.Values<JObject>())
                     {
-                        switch (type)
+                        if (DB.ContainsKey(type) == true)
                         {
-                            case "CustomizationItemDB":
-                                string cosmeticId = property?["CustomizationId"]?.ToString() ?? string.Empty;
-                                if (!IsInBlacklist(cosmeticId)) Ids.CosmeticIds.Add(cosmeticId);
-                                break;
-                            case "OutfitDB":
-                                string outfitId = property?["ID"]?.ToString() ?? string.Empty;
-                                if (!IsInBlacklist(outfitId)) Ids.OutfitIds.Add(outfitId);
-                                break;
-                            case "CharacterDescriptionDB":
-                                if (property?["CharacterId"]?.ToString() == "None") continue;
-                                CharacterNames.Add($"[{property?["CharacterId"]}] {property?["DisplayName"]?["SourceString"]}");
-
-                                Dictionary<string, string> charData = new Dictionary<string, string>
-                                {
-                                    { "characterName", property?["CharacterId"]?.ToString() ?? string.Empty },
-                                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                                    { "characterDefaultItem", property?["DefaultItem"]?.ToString() ?? string.Empty },
-                                    { "name", property?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty }
-                                };
-                                
-                                Ids.DlcIds.Add(charData);
-                                break;
-                            case "ItemDB":
-                                if (property?["Type"]?.ToString() != "EInventoryItemType::Power")
-                                {
-                                    string itemId = property?["ItemId"]?.ToString() ?? string.Empty;
-                                    
-                                    Dictionary<string, string> itemData = new Dictionary<string, string>
-                                    {
-                                        { "itemId", itemId },
-                                        { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                                        { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                                        { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                                        { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-                                    };
-                                    
-                                    if (!IsInBlacklist(itemId)) Ids.ItemIds.Add(itemData);
-                                }
-                                break;
-                            case "ItemAddonDB":
-                                string itemAddonId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-                                Dictionary<string, string> itemAddonData = new Dictionary<string, string>
-                                {
-                                    { "itemId", itemAddonId },
-                                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                                    { "characterDefaultItem", property?["ParentItem"]?["ItemIDs"]?.Count() > 0 ? (property?["ParentItem"]?["ItemIDs"]?[0]?.ToString() ?? string.Empty) : string.Empty },
-                                    { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                                    { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                                    { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-                                };
-                                
-                                if (!IsInBlacklist(itemAddonId)) Ids.AddonIds.Add(itemAddonData);
-                                break;
-                            case "OfferingDB":
-                                string offeringId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-                                Dictionary<string, string> offeringData = new Dictionary<string, string>
-                                {
-                                    { "itemId", offeringId },
-                                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                                    { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                                    { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                                    { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-                                };
-
-                                if (!IsInBlacklist(offeringId)) Ids.OfferingIds.Add(offeringData);
-                                break;
-                            case "PerkDB":
-                                string perkId = property?["ItemId"]?.ToString() ?? string.Empty;
-                                
-                                Dictionary<string, string> perkData = new Dictionary<string, string>
-                                {
-                                    { "itemId", perkId },
-                                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                                    { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                                    { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                                    { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-                                };
-                                
-                                if (!IsInBlacklist(perkId)) Ids.PerkIds.Add(perkData);
-                                break;
+                            DB[type](property);
                         }
                     }
                 }
@@ -220,50 +264,7 @@ namespace Relish
 
         private static bool IsInBlacklist(string id)
         {
-            if (!File.Exists("blacklist.json"))
-            {
-                var blacklist = new
-                {
-                    IDs = new List<string>()
-                    {
-                        "Item_LamentConfiguration"
-                    }
-                };
-                
-                File.WriteAllText("blacklist.json", JsonConvert.SerializeObject(blacklist, Formatting.Indented));
-            }
-
-            string blacklistContent = File.ReadAllText("blacklist.json");
-            JObject json = JObject.Parse(blacklistContent);
-
-            foreach (string? blacklistId in ((JArray)json["IDs"]!)!)
-            {
-                if (blacklistId == id) return true;
-            }
-
-            return false;
-        }
-
-        private static class FilePaths
-        {
-            internal static readonly List<string> CustomizationItemDb = new();
-            internal static readonly List<string> OutfitDb = new();
-            internal static readonly List<string> CharacterDescriptionDb = new();
-            internal static readonly List<string> ItemDb = new();
-            internal static readonly List<string> ItemAddonDb = new();
-            internal static readonly List<string> OfferingDb = new();
-            internal static readonly List<string> PerkDb = new();
-        }
-
-        internal static class Ids
-        {
-            internal static readonly List<object> CosmeticIds = new();
-            internal static readonly List<object> OutfitIds = new();
-            internal static readonly List<object> DlcIds = new();
-            internal static readonly List<object> ItemIds = new();
-            internal static readonly List<object> AddonIds = new();
-            internal static readonly List<object> OfferingIds = new();
-            internal static readonly List<object> PerkIds = new();
+            return (Blacklist.Contains(id));
         }
     }
 }
