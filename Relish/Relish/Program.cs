@@ -12,6 +12,7 @@ using CUE4Parse.UE4.Versions;
 using Microsoft.CSharp.RuntimeBinder;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using static System.Net.WebRequestMethods;
 using static Relish.Market;
 
 namespace Relish
@@ -27,13 +28,13 @@ namespace Relish
     public class Market
     {
         public int code { get; set; }
-        public string author { get; set; }
-        public string updated { get; set; }
+        public string message { get; set; }
         public Data data { get; set; }
 
         public class Data
         {
             public List<Item> inventory { get; set; }
+            public string playerId { get; set; }
         }
 
         public class Item
@@ -64,17 +65,21 @@ namespace Relish
                 Market = new Market()
                 {
                     code = 200,
-                    author = "neo",
-                    updated = "12.10.2023",
+                    message = "OK",
                     data = new Market.Data()
                     {
+                        playerId = "neo",
                         inventory = new List<Market.Item>()
                     }
                 };
                 AccessKeys = new Dictionary<string, string>();
                 Blacklist = new List<string>()
                 {
-                    "Item_LamentConfiguration"
+                    "Item_LamentConfiguration",
+                    "IO_001",
+                    "IO_002",
+                    "IO_003",
+                    "IO_004"
                 };
                 DB = new Dictionary<string, Action<JObject?>>()
                 {
@@ -137,55 +142,41 @@ namespace Relish
 
         private void AddToMarket(string itemId, int quantity = 1)
         {
-            Market.Item item = new Market.Item()
+            Item item = new Item()
             {
                 lastUpdateAt = unixTime,
                 objectId = itemId,
                 quantity = quantity
             };
 
-            if (Market.data.inventory.Any(x => x.objectId == item.objectId) == false)
+            if (IsInBlacklist(itemId) == false && itemId != string.Empty)
             {
-                Market.data.inventory.Add(item);
+                if (Market.data.inventory.Any(x => x.objectId == item.objectId) == false)
+                {
+                    Market.data.inventory.Add(item);
+                }
             }
         }
 
         private void CustomizationItemDB(JObject? property)
         {
-            string cosmeticId = property?["CustomizationId"]?.ToString() ?? string.Empty;
-
-            if (IsInBlacklist(cosmeticId) == false)
-            {
-                AddToMarket(cosmeticId);
-            }
+            AddToMarket(property?["CustomizationId"]?.ToString() ?? string.Empty);
         }
 
         private void OutfitDB(JObject? property)
         {
-            string outfitId = property?["ID"]?.ToString() ?? string.Empty;
-
-            if (IsInBlacklist(outfitId) == false)
-            {
-                AddToMarket(outfitId);
-            }
+            AddToMarket(property?["ID"]?.ToString() ?? string.Empty);
+            AddToMarket(property?["_outfitId"]?.ToString() ?? string.Empty);
         }
 
         private void CharacterDescriptionDB(JObject? property)
         {
             if (property?["CharacterId"]?.ToString() != "None")
             {
-                Dictionary<string, string> charData = new Dictionary<string, string>
-                {
-                    { "characterName", property?["CharacterId"]?.ToString() ?? string.Empty },
-                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                    { "characterDefaultItem", property?["DefaultItem"]?.ToString() ?? string.Empty },
-                    { "name", property?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty }
-                };
-
-                if (charData["characterName"] != string.Empty)
-                {
-                    AddToMarket(charData["characterName"]);
-                }
+                AddToMarket(property?["CharacterId"]?.ToString() ?? string.Empty);
+                AddToMarket(property?["CustomizationDescription"]?[0]?["DefaultItemId"]?["RowValue"]?.ToString() ?? string.Empty);
+                AddToMarket(property?["CustomizationDescription"]?[1]?["DefaultItemId"]?["RowValue"]?.ToString() ?? string.Empty);
+                AddToMarket(property?["CustomizationDescription"]?[2]?["DefaultItemId"]?["RowValue"]?.ToString() ?? string.Empty);
             }
         }
 
@@ -193,82 +184,23 @@ namespace Relish
         {
             if (property?["Type"]?.ToString() != "EInventoryItemType::Power")
             {
-                string itemId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-                Dictionary<string, string> itemData = new Dictionary<string, string>
-                {
-                    { "itemId", itemId },
-                    { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                    { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                    { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                    { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-                };
-
-                if (!IsInBlacklist(itemId))
-                {
-                    AddToMarket(itemId);
-                }
+                AddToMarket(property?["ItemId"]?.ToString() ?? string.Empty);
             }
         }
 
         private void ItemAddonDB(JObject? property)
         {
-            string itemAddonId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-            Dictionary<string, string> itemAddonData = new Dictionary<string, string>
-            {
-                { "itemId", itemAddonId },
-                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                { "characterDefaultItem", property?["ParentItem"]?["ItemIDs"]?.Count() > 0 ? (property?["ParentItem"]?["ItemIDs"]?[0]?.ToString() ?? string.Empty) : string.Empty },
-                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-            };
-
-            if (IsInBlacklist(itemAddonData) == false)
-            {
-                AddToMarket(itemAddonId);
-            }
+            AddToMarket(property?["ItemId"]?.ToString() ?? string.Empty);
         }
 
         private void OfferingDB(JObject? property)
         {
-            string offeringId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-            Dictionary<string, string> offeringData = new Dictionary<string, string>
-            {
-                { "itemId", offeringId },
-                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-            };
-
-            if (IsInBlacklist(offeringData) == false)
-            {
-                //Ids.OfferingIds.Add(offeringData);
-                AddToMarket(offeringId);
-            }
+            AddToMarket(property?["ItemId"]?.ToString() ?? string.Empty);
         }
 
         private void PerkDB(JObject? property)
         {
-            string perkId = property?["ItemId"]?.ToString() ?? string.Empty;
-
-            Dictionary<string, string> perkData = new Dictionary<string, string>
-            {
-                { "itemId", perkId },
-                { "characterType", property?["Role"]?.ToString() ?? string.Empty },
-                { "name", property?["UIData"]?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty },
-                { "rarity", property?["Rarity"]?.ToString() ?? string.Empty },
-                { "availability", property?["Availability"]?["itemAvailability"]?.ToString() ?? string.Empty }
-            };
-
-            if (IsInBlacklist(perkId) == false)
-            {
-                //Ids.PerkIds.Add(perkData);
-                AddToMarket(perkId, 3);
-            }
+            AddToMarket(property?["ItemId"]?.ToString() ?? string.Empty, 3);
         }
 
         public void Get_Files()
@@ -280,40 +212,74 @@ namespace Relish
             List<string> ItemAddonDB = new List<string>();
             List<string> OfferingDB = new List<string>();
             List<string> PerkDB = new List<string>();
+            List<string> files = new List<string>();
+            List<string> cache = new List<string>();
 
-            Console.WriteLine("[WAIT] extracting");
+            Console.WriteLine("==> extracting");
             foreach (var keyValuePair in Provider.Files.Where(val => val.Value.Path.Contains("DeadByDaylight/Content/Data")))
             {
                 switch (keyValuePair.Value.Name)
                 {
                     case "CustomizationItemDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "CustomizationItemDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "OutfitDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "OutfitDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "CharacterDescriptionDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "CharacterDescriptionDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "ItemDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "ItemDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "ItemAddonDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "ItemAddonDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "OfferingDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "OfferingDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                     case "PerkDB.uasset":
                         Add_Values(keyValuePair.Value.Path, "PerkDB");
+                        Dump(files, keyValuePair, cache);
                         break;
                 }
             }
-            Console.WriteLine("[DONE] extracted");
+            Console.WriteLine("==> extracted");
 
-            Console.WriteLine("[WAIT] dumping");
-            File.WriteAllText("market.json", JsonConvert.SerializeObject(Market, Formatting.Indented));
-            Console.WriteLine("[DONE] dumped");
+            Console.WriteLine("==> dumping");
+            System.IO.File.WriteAllText("market.json", JsonConvert.SerializeObject(Market, Formatting.Indented));
+            Console.WriteLine("==> dumped");
+        }
+
+        private void Dump(List<string> files, dynamic keyValuePair, List<string> cache)
+        {
+            if (files.Contains(keyValuePair.Value.Name) == false && keyValuePair.Value.Name.EndsWith(".uasset"))
+            {
+                files.Add(keyValuePair.Value.Name);
+                var export = JsonConvert.DeserializeObject<dynamic>(
+                    JsonConvert.SerializeObject(Provider?.LoadAllObjects(keyValuePair.Value.Path))
+                ) ?? new ExpandoObject();
+
+                Console.WriteLine($"\t-> {keyValuePair.Value.Name}");
+                foreach (JProperty p in export[0]?.Rows ?? Enumerable.Empty<JProperty>())
+                {
+                    foreach (JObject? property in p.Values<JObject>())
+                    {
+                        cache.Add(property.ToString());
+                    }
+                }
+                if (cache.Count() > 0)
+                {
+                    System.IO.File.AppendAllLines($"raw\\{keyValuePair.Value.Name}.json", cache);
+                    cache.Clear();
+                }
+            }
         }
 
         private void Add_Values(string path, string type)
