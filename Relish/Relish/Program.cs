@@ -12,6 +12,7 @@ using CUE4Parse.UE4.Versions;
 using Microsoft.CSharp.RuntimeBinder;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using static Relish.Market;
 
 namespace Relish
 {
@@ -37,38 +38,39 @@ namespace Relish
 
         public class Item
         {
-            public int lastUpdateAt { get; set }
-            public string objectId { get; set }
-            public int quantity { get; set }
+            public long lastUpdateAt { get; set; }
+            public string objectId { get; set; }
+            public int quantity { get; set; }
         }
     }
 
     public class Core
     {
-        private List<string> CharacterNames { get; set; }
         private List<string> Blacklist { get; set; }
         private Dictionary<string, string> AccessKeys { get; set; }
         private Dictionary<string, Action<JObject?>> DB { get; set; }
         private DefaultFileProvider? Provider { get; set; }
         private string PaksPath { get; set; }
         private Market Market { get; set; }
+        private long unixTime { get; set; }
 
         public Core(string paksPath)
         {
+            DateTime currentTime = DateTime.UtcNow;
+            unixTime = ((DateTimeOffset)currentTime).ToUnixTimeSeconds();
             if (Directory.Exists(paksPath) == true)
             {
                 PaksPath = paksPath;
                 Market = new Market()
                 {
-                    code = 200
+                    code = 200,
                     author = "neo",
                     updated = "12.10.2023",
                     data = new Market.Data()
                     {
-                        inventory = new List<Item>()
+                        inventory = new List<Market.Item>()
                     }
                 };
-                CharacterNames = new List<string>();
                 AccessKeys = new Dictionary<string, string>();
                 Blacklist = new List<string>()
                 {
@@ -133,14 +135,28 @@ namespace Relish
             return (buffer.key);
         }
 
+        private void AddToMarket(string itemId, int quantity = 1)
+        {
+            Market.Item item = new Market.Item()
+            {
+                lastUpdateAt = unixTime,
+                objectId = itemId,
+                quantity = quantity
+            };
+
+            if (Market.data.inventory.Any(x => x.objectId == item.objectId) == false)
+            {
+                Market.data.inventory.Add(item);
+            }
+        }
+
         private void CustomizationItemDB(JObject? property)
         {
             string cosmeticId = property?["CustomizationId"]?.ToString() ?? string.Empty;
 
             if (IsInBlacklist(cosmeticId) == false)
             {
-                //Ids.CosmeticIds.Add(cosmeticId);
-                Console.WriteLine($"CustomizationItemDB: {cosmeticId}");
+                AddToMarket(cosmeticId);
             }
         }
 
@@ -150,8 +166,7 @@ namespace Relish
 
             if (IsInBlacklist(outfitId) == false)
             {
-                //Ids.OutfitIds.Add(outfitId);
-                Console.WriteLine($"OutfitDB: {outfitId}");
+                AddToMarket(outfitId);
             }
         }
 
@@ -159,8 +174,6 @@ namespace Relish
         {
             if (property?["CharacterId"]?.ToString() != "None")
             {
-                CharacterNames.Add($"[{property?["CharacterId"]}] {property?["DisplayName"]?["SourceString"]}");
-
                 Dictionary<string, string> charData = new Dictionary<string, string>
                 {
                     { "characterName", property?["CharacterId"]?.ToString() ?? string.Empty },
@@ -169,8 +182,10 @@ namespace Relish
                     { "name", property?["DisplayName"]?["SourceString"]?.ToString() ?? string.Empty }
                 };
 
-                //Ids.DlcIds.Add(charData);
-                Console.WriteLine($"CharacterDescriptionDB: {charData}");
+                if (charData["characterName"] != string.Empty)
+                {
+                    AddToMarket(charData["characterName"]);
+                }
             }
         }
 
@@ -191,19 +206,8 @@ namespace Relish
 
                 if (!IsInBlacklist(itemId))
                 {
-                    //Ids.ItemIds.Add(itemData);
-                    Market.data.inventory.Add(new Item()
-                    {
-                        lastUpdateAt = 1614960501
-                        objectId = itemId
-                        quantity = 1
-                    });
-                    Console.WriteLine($"ItemDB: {itemId}");
+                    AddToMarket(itemId);
                 }
-            }
-            else
-            {
-                Console.WriteLine($"[ ITEMDB ]: {0}", property?["Type"]?.ToString());
             }
         }
 
@@ -223,8 +227,7 @@ namespace Relish
 
             if (IsInBlacklist(itemAddonData) == false)
             {
-                //Ids.AddonIds.Add(itemAddonData);
-                Console.WriteLine($"ItemAddonDB: {itemAddonData}");
+                AddToMarket(itemAddonId);
             }
         }
 
@@ -244,7 +247,7 @@ namespace Relish
             if (IsInBlacklist(offeringData) == false)
             {
                 //Ids.OfferingIds.Add(offeringData);
-                Console.WriteLine($"OfferingDB: {offeringData}");
+                AddToMarket(offeringId);
             }
         }
 
@@ -264,7 +267,7 @@ namespace Relish
             if (IsInBlacklist(perkId) == false)
             {
                 //Ids.PerkIds.Add(perkData);
-                Console.WriteLine($"PerkDB: {perkData}");
+                AddToMarket(perkId, 3);
             }
         }
 
@@ -278,6 +281,7 @@ namespace Relish
             List<string> OfferingDB = new List<string>();
             List<string> PerkDB = new List<string>();
 
+            Console.WriteLine("[WAIT] extracting");
             foreach (var keyValuePair in Provider.Files.Where(val => val.Value.Path.Contains("DeadByDaylight/Content/Data")))
             {
                 switch (keyValuePair.Value.Name)
@@ -305,6 +309,11 @@ namespace Relish
                         break;
                 }
             }
+            Console.WriteLine("[DONE] extracted");
+
+            Console.WriteLine("[WAIT] dumping");
+            File.WriteAllText("market.json", JsonConvert.SerializeObject(Market, Formatting.Indented));
+            Console.WriteLine("[DONE] dumped");
         }
 
         private void Add_Values(string path, string type)
