@@ -23,6 +23,26 @@ namespace Relish
         }
     }
 
+    public class Market
+    {
+        public int code { get; set; }
+        public string author { get; set; }
+        public string updated { get; set; }
+        public Data data { get; set; }
+
+        public class Data
+        {
+            public List<Item> inventory { get; set; }
+        }
+
+        public class Item
+        {
+            public int lastUpdateAt { get; set }
+            public string objectId { get; set }
+            public int quantity { get; set }
+        }
+    }
+
     public class Core
     {
         private List<string> CharacterNames { get; set; }
@@ -31,12 +51,23 @@ namespace Relish
         private Dictionary<string, Action<JObject?>> DB { get; set; }
         private DefaultFileProvider? Provider { get; set; }
         private string PaksPath { get; set; }
+        private Market Market { get; set; }
 
         public Core(string paksPath)
         {
             if (Directory.Exists(paksPath) == true)
             {
                 PaksPath = paksPath;
+                Market = new Market()
+                {
+                    code = 200
+                    author = "neo",
+                    updated = "12.10.2023",
+                    data = new Market.Data()
+                    {
+                        inventory = new List<Item>()
+                    }
+                };
                 CharacterNames = new List<string>();
                 AccessKeys = new Dictionary<string, string>();
                 Blacklist = new List<string>()
@@ -161,6 +192,12 @@ namespace Relish
                 if (!IsInBlacklist(itemId))
                 {
                     //Ids.ItemIds.Add(itemData);
+                    Market.data.inventory.Add(new Item()
+                    {
+                        lastUpdateAt = 1614960501
+                        objectId = itemId
+                        quantity = 1
+                    });
                     Console.WriteLine($"ItemDB: {itemId}");
                 }
             }
