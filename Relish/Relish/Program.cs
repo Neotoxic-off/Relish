@@ -21,7 +21,20 @@ namespace Relish
     {
         static void Main(string[] args)
         {
-            Core Core = new Core("C:\\Program Files\\Epic Games\\DeadByDaylight\\DeadByDaylight\\Content\\Paks");
+            string folder = null;
+
+            if (args.Count() > 0)
+            {
+                folder = args[0];
+                Console.WriteLine(folder);
+
+                Core Core = new Core(folder);
+                Console.WriteLine($"{folder}: {Directory.Exists(folder)}");
+                Console.ReadKey();
+            } else
+            {
+                Console.WriteLine($"usage: relish.exe <dead by daylight path>\nexample: .\\Relish.exe \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Dead by Daylight\\DeadByDaylight\\Content\\Paks\"");
+            }
         }
     }
 
@@ -121,6 +134,7 @@ namespace Relish
             {
                 while (reader.ReadLine() is { } line)
                 {
+                    Console.WriteLine(line);
                     if (line.Contains("_live") == true)
                     {
                         match = Regex.Match(line, keyPattern);
